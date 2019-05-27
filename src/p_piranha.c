@@ -41,7 +41,7 @@
 #include <p_log.h>
 #include <p_config.h>
 #include <p_socket.h>
-#include <p_dump.h>
+#include <p_sqldump.h>
 #include <p_tools.h>
 
 
@@ -223,6 +223,7 @@ void *p_main_peer(void *data)
 				peer[a].smsg   = 0;
 				peer[a].filets = 0;
 				peer[a].fh     = NULL;
+				peer[a].psqldb = NULL;
 				peer[a].ucount = 0;
 				peer[a].as4    = 0;
 				peerid         = a;
@@ -259,7 +260,7 @@ void *p_main_peer(void *data)
 
 	p_main_peer_loop(peerid);
 	gettimeofday(&msgtime, NULL);
-	p_dump_add_close(peer, peerid, &msgtime);
+	p_sqldump_add_close(peer, peerid, &msgtime);
 
 	/* peer disconnected, lets wait a bit to avoid direct reconnection */
 	/* we'll wait DUMPINTERVAL time! */
@@ -310,7 +311,7 @@ void p_main_peer_loop(int id)
 		if ( tlen == -1 )
 		{
 			gettimeofday(&msgtime, NULL);
-			p_dump_check_file(peer,id,&msgtime);
+			p_sqldump_check_file(peer,id,&msgtime);
 			sleep(1);
 		}
 		else if ( tlen > 0 )
@@ -697,7 +698,7 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 
 			peer[id].status = 2;
 
-			p_dump_add_open(peer, id, &msgtime);
+			p_sqldump_add_open(peer, id, &msgtime);
 
 		}
 		else if ( header->type == BGP_UPDATE && peer[id].status == 2 )
@@ -784,7 +785,7 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 				}
 				#endif
 
-				p_dump_add_withdrawn4(peer,id,&msgtime,prefix,plen);
+				p_sqldump_add_withdrawn4(peer,id,&msgtime,prefix,plen);
 				peer[id].ucount++;
 			}
 
@@ -1084,7 +1085,7 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 							}
 							#endif
 
-							p_dump_add_announce6( peer, id, &msgtime, prefix6, plen, origin, nh,
+							p_sqldump_add_announce6( peer, id, &msgtime, prefix6, plen, origin, nh,
 								aspath,         aspathlen,
 								community,      communitylen,
 								extcommunity6,  extcommunitylen6,
@@ -1149,7 +1150,7 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 							}
 							#endif
 
-							p_dump_add_withdrawn6(
+							p_sqldump_add_withdrawn6(
 								peer,
 								id,
 								&msgtime,
@@ -1225,7 +1226,7 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 				}
 				#endif
 
-				p_dump_add_announce4(peer,id, &msgtime, prefix, plen, origin, nexthop,
+				p_sqldump_add_announce4(peer,id, &msgtime, prefix, plen, origin, nexthop,
 					aspath,         aspathlen,
 					community,      communitylen,
 					extcommunity4,  extcommunitylen4,
@@ -1258,7 +1259,7 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 		{
 			/* keepalive packet */
 			peer[id].rts = ts.tv_sec;
-			p_dump_add_keepalive(peer, id, &msgtime);
+			p_sqldump_add_keepalive(peer, id, &msgtime);
 			#ifdef DEBUG
 			printf("received keepalive\n");
 			#endif

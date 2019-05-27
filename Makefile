@@ -7,7 +7,7 @@ BIN=bin
 
 WARNINGS=-Wall -Wshadow -Wcast-qual -Wpointer-arith \
 		-Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations \
-		-Wredundant-decls -Wnested-externs -Werror
+		-Wredundant-decls -Wnested-externs 
 
 INCLUDES=-I$(INC)
 
@@ -18,7 +18,7 @@ OPT=-O2
 endif
 
 ifeq ($(OS), LINUX)
-LDFLAGS=-lpthread
+LDFLAGS=-lpthread -ldl
 endif
 
 ifeq ($(OS), FREEBSD)
@@ -47,7 +47,7 @@ PRINTF2=@printf "  %-7s %-25s -> %s\n"
 
 CFLAGS=$(OPT) $(WARNINGS) $(INCLUDES) -DOS_$(OS) -DPATH='"$(PREFIX)"' -DCC_$(CCNAME) -DDUMPINTERVAL=$(DUMPINTERVAL)
 
-all: banner prepare $(BIN)/piranha $(BIN)/ptoa $(BIN)/piranhactl
+all: banner prepare $(BIN)/trisul_piranha 
 	$(PRINTF1) INFO "Compilation done"
 
 help:
@@ -92,16 +92,7 @@ prepare:
 	$(RUN_PRINT)$(PRINTF1) MKDIR "$(OBJ) $(BIN)"
 	$(RUN_EXEC)$(MKDIR) -p $(OBJ) $(BIN)
 
-$(BIN)/piranha: $(OBJ)/p_tools.o $(OBJ)/p_config.o $(OBJ)/p_socket.o $(OBJ)/p_log.o $(OBJ)/p_dump.o $(OBJ)/p_piranha.o
-	$(RUN_PRINT)$(PRINTF2) LINK $@ "$^"
-	$(RUN_EXEC)$(CC) -o $@ $^ $(LDFLAGS)
-	$(PRINTF2) INFO "Compilation done" $@
-
-$(BIN)/piranhactl:
-	$(RUN_PRINT)$(PRINTF2) SED utils/piranhactl.in $(BIN)/piranhactl
-	$(RUN_EXEC)$(CAT) utils/piranhactl.in | $(SED) "s@%PATH%@$(PREFIX)@g" > $(BIN)/piranhactl
-
-$(BIN)/ptoa: $(OBJ)/p_tools.o $(OBJ)/p_undump.o $(OBJ)/p_ptoa.o
+$(BIN)/trisul_piranha: $(OBJ)/p_tools.o $(OBJ)/p_config.o $(OBJ)/p_socket.o $(OBJ)/p_log.o $(OBJ)/p_dump.o $(OBJ)/p_sqldump.o  $(OBJ)/p_piranha.o $(OBJ)/sqlite3.o
 	$(RUN_PRINT)$(PRINTF2) LINK $@ "$^"
 	$(RUN_EXEC)$(CC) -o $@ $^ $(LDFLAGS)
 	$(PRINTF2) INFO "Compilation done" $@
@@ -116,10 +107,6 @@ distclean: clean
 	$(RUN_EXEC)$(RM) -f .config.mk
 	$(PRINTF1) INFO "Distcleanup done"
 
-test: $(BIN)/ptoa
-	$(RUN_PRINT)$(PRINTF1) TEST test/test.sh
-	$(RUN_EXEC)cd test && ./test.sh
-
 install:
 	$(RUN_PRINT)$(PRINTF1) MKDIR $(PREFIX)/$(BIN)
 	$(RUN_EXEC)$(MKDIR) -p $(PREFIX)/$(BIN)
@@ -130,24 +117,14 @@ install:
 	$(RUN_PRINT)$(PRINTF1) MKDIR $(PREFIX)/var/dump
 	$(RUN_EXEC)$(MKDIR) -p $(PREFIX)/var/dump
 
-	$(RUN_PRINT)$(PRINTF2) CP $(BIN)/piranha $(PREFIX)/$(BIN)/
-	$(RUN_EXEC)$(CP) $(BIN)/piranha $(PREFIX)/$(BIN)/
-	$(RUN_EXEC)$(CHMOD) 755 $(PREFIX)/$(BIN)/piranha
+	$(RUN_PRINT)$(PRINTF2) CP $(BIN)/trisul_piranha $(PREFIX)/$(BIN)/
+	$(RUN_EXEC)$(CP) $(BIN)/trisul_piranha $(PREFIX)/$(BIN)/
+	$(RUN_EXEC)$(CHMOD) 755 $(PREFIX)/$(BIN)/trisul_piranha
 
-	$(RUN_PRINT)$(PRINTF2) CP $(BIN)/ptoa $(PREFIX)/$(BIN)/
-	$(RUN_EXEC)$(CP) $(BIN)/ptoa $(PREFIX)/$(BIN)/
-	$(RUN_EXEC)$(CHMOD) 755 $(PREFIX)/$(BIN)/ptoa
 
 	$(RUN_PRINT)$(PRINTF2) CP etc/piranha_sample.conf $(PREFIX)/etc/
 	$(RUN_EXEC)$(CP) etc/piranha_sample.conf $(PREFIX)/etc/
 	$(RUN_EXEC)$(CHMOD) 644 $(PREFIX)/etc/piranha_sample.conf
-
-	$(RUN_PRINT)$(PRINTF2) CP $(BIN)/piranhactl $(PREFIX)/$(BIN)/
-	$(RUN_EXEC)$(CP) $(BIN)/piranhactl $(PREFIX)/$(BIN)/
-	$(RUN_EXEC)$(CHMOD) 755 $(PREFIX)/$(BIN)/piranhactl
-
-	$(RUN_PRINT)$(PRINTF2) CP "man" $(PREFIX)/
-	$(RUN_EXEC)$(CP) -r man $(PREFIX)/
 
 	$(PRINTF1) INFO "Installation done"
 
