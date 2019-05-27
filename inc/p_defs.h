@@ -21,6 +21,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "sqlite3.h"
 
 #include <p_endian.h>
 
@@ -419,6 +420,8 @@ struct peer_t
 	int      ilen;
 	int      olen;
 	int      sock;
+	char     sqldbname[1024];  /* sql database name */
+	sqlite3  *psqldb;          /* sql handle  */
 };
 
 #endif
