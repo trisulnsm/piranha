@@ -59,7 +59,7 @@ void p_sqldump_open_file(struct peer_t *peer, int id, struct timeval *ts)
 		DUMPDIR,
 		peer[id].af == 4 ? p_tools_ip4str(id, &peer[id].ip4) : p_tools_ip6str(id, &peer[id].ip6));
 
-	snprintf(peer[id].sqldbname, sizeof(peer[id].sqldbname), "%s/%s/routes.db",
+	snprintf(peer[id].sqldbname, sizeof(peer[id].sqldbname), "%s/%s/routes.db.sqlite3",
 		DUMPDIR,
 		peer[id].af == 4 ? p_tools_ip4str(id, &peer[id].ip4) : p_tools_ip6str(id, &peer[id].ip6));
 
