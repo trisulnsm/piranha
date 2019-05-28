@@ -64,7 +64,7 @@
 #define STATUSFILE PATH "/var/piranha.status"
 #define STATUSTEMP PATH "/var/piranha.status.temp"
 #define PIDFILE    PATH "/var/piranha.pid"
-#define DUMPDIR    PATH "/var/dump"
+#define DUMPDIR    PATH "/var/"
 
 #define INPUT_BUFFER  1048576
 #define OUTPUT_BUFFER 65536
