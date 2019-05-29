@@ -145,6 +145,7 @@ void p_sqldump_open_file(struct peer_t *peer, int id, struct timeval *ts)
 	sqerr = sqlite3_finalize( pstmt);
 	exitOnError(pSQL3, "inser/peerinfo/finalize",  sqerr);
 
+	sqerr = sqlite3_exec( pSQL3, "COMMIT TRANSACTION", NULL, NULL, NULL );
 	sqlite3_close(pSQL3);
 
 }
