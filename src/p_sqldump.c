@@ -371,7 +371,7 @@ void p_sqldump_add_announce4(struct peer_t *peer, int id, struct timeval *ts,
 		for(i=0; i<aspathlen; i++)
 		{
 			char b[64];
-			sprintf(b, "%d", opt_aspath.data[i]);
+			sprintf(b, "%u", opt_aspath.data[i]);
 			strcat(aspathbuf, b);
 			if (i < aspathlen-1) {
 				strcat(aspathbuf, " ");
@@ -459,7 +459,7 @@ void p_sqldump_add_announce6(struct peer_t *peer, int id, struct timeval *ts,
 		for(i=0; i<aspathlen; i++)
 		{
 			char b[64];
-			sprintf(b, "%d ", opt_aspath.data[i]);
+			sprintf(b, "%u ", opt_aspath.data[i]);
 			strcat(aspathbuf, b);
 		}
 
