@@ -81,6 +81,13 @@ void p_sqldump_open_file(struct peer_t *peer, int id, struct timeval *ts)
 	printf("opening '%s'\n",peer[id].sqldbname);
 	#endif
 
+	struct stat sb;
+	if ( stat(DUMPDIR, &sb) == -1 )
+	{
+		mkdir(DUMPDIR, 0755);
+	}
+
+
 	sqerr = sqlite3_open_v2( peer[id].sqldbname, &pSQL3, SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE, NULL);
 	exitOnError(pSQL3, "open", sqerr);
 	sqlite3_busy_timeout(pSQL3, 10000);
@@ -335,7 +342,7 @@ void p_sqldump_add_announce4(struct peer_t *peer, int id, struct timeval *ts,
 	int sqerr = SQLITE_OK;
 	sqlite3 * pSQL3=NULL;
 
-	char aspathbuf[256], prefixbuf[128], nexthopbuf[128];
+	char aspathbuf[1024], prefixbuf[128], nexthopbuf[128];
 	p_sqldump_check_file(peer,id,ts);
 
 	sqerr = sqlite3_open_v2( peer[id].sqldbname, &pSQL3, SQLITE_OPEN_READWRITE, NULL);
@@ -358,7 +365,7 @@ void p_sqldump_add_announce4(struct peer_t *peer, int id, struct timeval *ts,
 			for(i=0; i<aspathlen; i++)
 			{
 				if ( peer[id].as4 )
-					opt_aspath.data[i] = *((uint32_t*)aspath+i);
+					opt_aspath.data[i] = htobe32(*((uint32_t*)aspath+i));
 				else
 					opt_aspath.data[i] = *((uint16_t*)aspath+i);
 			}
@@ -425,7 +432,7 @@ void p_sqldump_add_announce6(struct peer_t *peer, int id, struct timeval *ts,
 	int sqerr = SQLITE_OK;
 	sqlite3 * pSQL3=NULL;
 
-	char aspathbuf[256], prefixbuf[128], nexthopbuf[128];
+	char aspathbuf[1024], prefixbuf[128], nexthopbuf[128];
 	p_sqldump_check_file(peer,id,ts);
 	
 	sqerr = sqlite3_open_v2( peer[id].sqldbname, &pSQL3, SQLITE_OPEN_READWRITE, NULL);
@@ -446,7 +453,7 @@ void p_sqldump_add_announce6(struct peer_t *peer, int id, struct timeval *ts,
 			for(i=0; i<aspathlen; i++)
 			{
 				if ( peer[id].as4 )
-					opt_aspath.data[i] = *((uint32_t*)aspath+i);
+					opt_aspath.data[i] = htobe32(*((uint32_t*)aspath+i));
 				else
 					opt_aspath.data[i] = *((uint16_t*)aspath+i);
 			}
