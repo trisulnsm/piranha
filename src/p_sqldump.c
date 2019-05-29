@@ -43,7 +43,26 @@ static void exitOnError(sqlite3 * db, const char * where, int sqerr)
 		fprintf(stderr,"      > sql msg        %s\n",sqlite3_errmsg(db));
 		fprintf(stderr,"      > sql errstring  %s\n",sqlite3_errstr(sqerr));
 		fprintf(stderr,"Sorry, have to quit (-2), bye\n");
+		sqlite3_close(db);
 		exit(-2);
+	}
+}
+
+static int  returnOnError(sqlite3 * db, const char * where, int sqerr, sqlite3_stmt * pstmt)
+{
+    if (sqerr!=SQLITE_OK && sqerr != SQLITE_ROW && sqerr != SQLITE_DONE )
+	{
+		fprintf(stderr,"WARNING!! at %s\n", where);
+		fprintf(stderr,"      > sql code       %d\n",sqerr);
+		fprintf(stderr,"      > sql error      %d\n",sqlite3_errcode(db));
+		fprintf(stderr,"      > sql exterror   %d\n",sqlite3_extended_errcode(db));
+		fprintf(stderr,"      > sql msg        %s\n",sqlite3_errmsg(db));
+		fprintf(stderr,"      > sql errstring  %s\n",sqlite3_errstr(sqerr));
+		sqlite3_finalize(pstmt);
+		sqlite3_close(db);
+		return 1;
+	} else {
+		return 0;
 	}
 }
 
@@ -51,13 +70,8 @@ static void exitOnError(sqlite3 * db, const char * where, int sqerr)
 /* opening file */
 void p_sqldump_open_file(struct peer_t *peer, int id, struct timeval *ts)
 {
-	struct stat sb;
-	char dirname[1024];
-
-
-	snprintf(dirname, sizeof(dirname), "%s/%s",
-		DUMPDIR,
-		peer[id].af == 4 ? p_tools_ip4str(id, &peer[id].ip4) : p_tools_ip6str(id, &peer[id].ip6));
+	int sqerr = SQLITE_OK;
+	sqlite3 * pSQL3=NULL;
 
 	snprintf(peer[id].sqldbname, sizeof(peer[id].sqldbname), "%s/%s_routes.db.sqlite3",
 		DUMPDIR,
@@ -66,16 +80,11 @@ void p_sqldump_open_file(struct peer_t *peer, int id, struct timeval *ts)
 	#ifdef DEBUG
 	printf("opening '%s'\n",peer[id].sqldbname);
 	#endif
-	if ( stat(dirname, &sb) == -1 )
-	{
-		mkdir(dirname, 0755);
-	}
 
-
-	int sqerr = SQLITE_OK;
-	sqlite3 * pSQL3=NULL;
 	sqerr = sqlite3_open_v2( peer[id].sqldbname, &pSQL3, SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE, NULL);
 	exitOnError(pSQL3, "open", sqerr);
+	sqlite3_busy_timeout(pSQL3, 10000);
+	sqerr = sqlite3_exec( pSQL3, "BEGIN TRANSACTION", NULL, NULL, NULL );
 
 	// prefix -> as path, the current view 
 	sqerr=sqlite3_exec(pSQL3, "CREATE TABLE IF NOT EXISTS PREFIX_PATHS_V4 (    "
@@ -117,17 +126,13 @@ void p_sqldump_open_file(struct peer_t *peer, int id, struct timeval *ts)
 						"    );", NULL,NULL,NULL);
 	exitOnError(pSQL3, "create table peerinfo", sqerr);
 
-	// sets it 
-	peer[id].psqldb  = pSQL3;
-	
-
 
 	// insert peer info 
 	sqlite3_stmt  * pstmt;
-	sqerr = sqlite3_prepare_v2( peer[id].psqldb,  
+	sqerr = sqlite3_prepare_v2( pSQL3,
 		"INSERT OR REPLACE INTO PEER_INFO (ADDRESS, DESCRIPTION) VALUES (?,?); ",
 		-1, &pstmt, NULL);
-	exitOnError(peer[id].psqldb, "insert/peerinfo/prepare",  sqerr);
+	exitOnError(pSQL3, "insert/peerinfo/prepare",  sqerr);
 
 	sqerr = sqlite3_bind_text(pstmt, 1, 
 								(peer[id].af == 4 ? p_tools_ip4str(id, &peer[id].ip4) : p_tools_ip6str(id, &peer[id].ip6)),
@@ -135,10 +140,12 @@ void p_sqldump_open_file(struct peer_t *peer, int id, struct timeval *ts)
 	sqerr = sqlite3_bind_text(pstmt, 2, "peer inserted", -1, NULL);
 
 	sqerr = sqlite3_step( pstmt);
-	exitOnError(peer[id].psqldb, "inser/peerinfo/step",  sqerr);
+	exitOnError(pSQL3, "insert/peerinfo/step",  sqerr);
 
 	sqerr = sqlite3_finalize( pstmt);
-	exitOnError(peer[id].psqldb, "inser/peerinfo/finalize",  sqerr);
+	exitOnError(pSQL3, "inser/peerinfo/finalize",  sqerr);
+
+	sqlite3_close(pSQL3);
 
 }
 
@@ -146,80 +153,103 @@ void p_sqldump_open_file(struct peer_t *peer, int id, struct timeval *ts)
 void p_sqldump_add_keepalive(struct peer_t *peer, int id, struct timeval *ts)
 {
 	int sqerr = SQLITE_OK;
+	sqlite3 * pSQL3=NULL;
 
 	p_sqldump_check_file(peer,id,ts);
+
+	sqerr = sqlite3_open_v2( peer[id].sqldbname, &pSQL3, SQLITE_OPEN_READWRITE, NULL);
+	exitOnError(pSQL3, "keepalive/open", sqerr);
+	sqlite3_busy_timeout(pSQL3, 10000);
+	sqerr = sqlite3_exec( pSQL3, "BEGIN TRANSACTION", NULL, NULL, NULL );
 
 	// retain structure as much as possible from p_dump so fill this msg 
 	struct dump_msg msg;
 	msg.ts   = ((uint64_t)ts->tv_sec);
 
 	sqlite3_stmt  * pstmt;
-	sqerr = sqlite3_prepare_v2( peer[id].psqldb,  
-		"UPDATE  LAST_KEEPALIVE SET TIMESTAMP = ?; ",
-		-1, &pstmt, NULL);
-	exitOnError(peer[id].psqldb, "update/prepare",  sqerr);
+	sqerr = sqlite3_prepare_v2( pSQL3,  "UPDATE  LAST_KEEPALIVE SET TIMESTAMP = ?; ", -1, &pstmt, NULL);
+	exitOnError(pSQL3, "update/prepare",  sqerr);
 
 	sqerr = sqlite3_bind_int64(pstmt, 1, msg.ts );
 
 	sqerr = sqlite3_step( pstmt);
-	exitOnError(peer[id].psqldb, "update/step",  sqerr);
+	exitOnError(pSQL3, "update/step",  sqerr);
 
 	sqerr = sqlite3_finalize( pstmt);
-	exitOnError(peer[id].psqldb, "update/finalize",  sqerr);
+	exitOnError(pSQL3, "update/finalize",  sqerr);
+
+	sqerr = sqlite3_exec( pSQL3, "COMMIT TRANSACTION", NULL, NULL, NULL );
+	sqlite3_close(pSQL3);
 }
 
 /* log session close */
 void p_sqldump_add_close(struct peer_t *peer, int id, struct timeval *ts)
 {
+	int sqerr = SQLITE_OK;
+	sqlite3 * pSQL3=NULL;
+
 	p_sqldump_check_file(peer,id,ts);
 
-	int sqerr = SQLITE_OK;
+	sqerr = sqlite3_open_v2( peer[id].sqldbname, &pSQL3, SQLITE_OPEN_READWRITE, NULL);
+	exitOnError(pSQL3, "bgpclose/open", sqerr);
+	sqlite3_busy_timeout(pSQL3, 10000);
+	sqerr = sqlite3_exec( pSQL3, "BEGIN TRANSACTION", NULL, NULL, NULL );
 
 	// retain structure as much as possible from p_dump so fill this msg 
 	struct dump_msg msg;
 	msg.ts   = ((uint64_t)ts->tv_sec);
 
 	sqlite3_stmt  * pstmt;
-	sqerr = sqlite3_prepare_v2( peer[id].psqldb,  
+	sqerr = sqlite3_prepare_v2( pSQL3,  
 		"INSERT INTO EVENTS (TIMESTAMP, DESCRIPTION) VALUES (?,?); ",
 		-1, &pstmt, NULL);
-	exitOnError(peer[id].psqldb, "addclose/insert/prepare",  sqerr);
+	exitOnError(pSQL3, "addclose/insert/prepare",  sqerr);
 
 	sqerr = sqlite3_bind_int64(pstmt,  1, msg.ts );
 	sqerr = sqlite3_bind_text(pstmt, 2, "connection close", -1, NULL );
 
 	sqerr = sqlite3_step( pstmt);
-	exitOnError(peer[id].psqldb, "addclose/step",  sqerr);
+	exitOnError(pSQL3, "addclose/step",  sqerr);
 
 	sqerr = sqlite3_finalize( pstmt);
-	exitOnError(peer[id].psqldb, "addclose/finalize",  sqerr);
+	exitOnError(pSQL3, "addclose/finalize",  sqerr);
+
+	sqerr = sqlite3_exec( pSQL3, "COMMIT TRANSACTION", NULL, NULL, NULL );
+	sqlite3_close(pSQL3);
 }
 
 /* log session open */
 void p_sqldump_add_open(struct peer_t *peer, int id, struct timeval *ts)
 {
 	int sqerr = SQLITE_OK;
+	sqlite3 * pSQL3=NULL;
 
 	p_sqldump_check_file(peer,id,ts);
+
+	sqerr = sqlite3_open_v2( peer[id].sqldbname, &pSQL3, SQLITE_OPEN_READWRITE, NULL);
+	exitOnError(pSQL3, "open/db", sqerr);
+	sqlite3_busy_timeout(pSQL3, 10000);
+	sqerr = sqlite3_exec( pSQL3, "BEGIN TRANSACTION", NULL, NULL, NULL );
 
 	// retain structure as much as possible from p_dump so fill this msg 
 	struct dump_msg msg;
 	msg.ts   = ((uint64_t)ts->tv_sec);
 
 	sqlite3_stmt  * pstmt;
-	sqerr = sqlite3_prepare_v2( peer[id].psqldb,  
-		"INSERT INTO EVENTS (TIMESTAMP, DESCRIPTION) VALUES (?,?); ",
-		-1, &pstmt, NULL);
-	exitOnError(peer[id].psqldb, "addopen/insert/prepare",  sqerr);
+	sqerr = sqlite3_prepare_v2( pSQL3,  "INSERT INTO EVENTS (TIMESTAMP, DESCRIPTION) VALUES (?,?); ", -1, &pstmt, NULL);
+	exitOnError(pSQL3, "addopen/insert/prepare",  sqerr);
 
 	sqerr = sqlite3_bind_int64(pstmt,  1, msg.ts );
 	sqerr = sqlite3_bind_text(pstmt, 2, "connection open", -1 , NULL );
 
 	sqerr = sqlite3_step( pstmt);
-	exitOnError(peer[id].psqldb, "addopen/step",  sqerr);
+	exitOnError(pSQL3, "addopen/step",  sqerr);
 
 	sqerr = sqlite3_finalize( pstmt);
-	exitOnError(peer[id].psqldb, "addopen/finalize",  sqerr);
+	exitOnError(pSQL3, "addopen/finalize",  sqerr);
+
+	sqerr = sqlite3_exec( pSQL3, "COMMIT TRANSACTION", NULL, NULL, NULL );
+	sqlite3_close(pSQL3);
 }
 
 /* footer for each EOF */
@@ -232,11 +262,18 @@ void p_sqldump_add_footer(struct peer_t *peer, int id, struct timeval *ts)
 void p_sqldump_add_withdrawn4(struct peer_t *peer, int id, struct timeval *ts, uint32_t prefix, uint8_t mask)
 {
 	int sqerr = SQLITE_OK;
+	sqlite3 * pSQL3=NULL;
+
 	p_sqldump_check_file(peer,id,ts);
 
+	sqerr = sqlite3_open_v2( peer[id].sqldbname, &pSQL3, SQLITE_OPEN_READWRITE, NULL);
+	exitOnError(pSQL3, "withdrawn4/open", sqerr);
+	sqlite3_busy_timeout(pSQL3, 10000);
+	sqerr = sqlite3_exec( pSQL3, "BEGIN TRANSACTION", NULL, NULL, NULL );
+
 	sqlite3_stmt  * pstmt;
-	sqerr = sqlite3_prepare_v2( peer[id].psqldb,  "DELETE FROM PREFIX_PATHS_V4 WHERE PREFIX=?; ", -1, &pstmt, NULL);
-	exitOnError(peer[id].psqldb, "withdrawn4/prepare",  sqerr);
+	sqerr = sqlite3_prepare_v2( pSQL3,  "DELETE FROM PREFIX_PATHS_V4 WHERE PREFIX=?; ", -1, &pstmt, NULL);
+	exitOnError(pSQL3, "withdrawn4/prepare",  sqerr);
 
 	char buf[128];
 	struct in_addr addr;
@@ -244,32 +281,45 @@ void p_sqldump_add_withdrawn4(struct peer_t *peer, int id, struct timeval *ts, u
 	sprintf(buf, "%s/%d", inet_ntoa(addr), mask);
 
 	sqerr = sqlite3_bind_text(pstmt, 1, buf,  -1 , NULL );
-	exitOnError(peer[id].psqldb, "withdrawn4/bind",  sqerr);
+	exitOnError(pSQL3, "withdrawn4/bind",  sqerr);
 	sqerr = sqlite3_step( pstmt);
-	exitOnError(peer[id].psqldb, "withdrawn4/step",  sqerr);
+	exitOnError(pSQL3, "withdrawn4/step",  sqerr);
 	sqerr = sqlite3_finalize( pstmt);
-	exitOnError(peer[id].psqldb, "withdrawn4/finalize",  sqerr);
+	exitOnError(pSQL3, "withdrawn4/finalize",  sqerr);
+
+	sqerr = sqlite3_exec( pSQL3, "COMMIT TRANSACTION", NULL, NULL, NULL );
+	sqlite3_close(pSQL3);
 }
 
 /* log bgp IPv6 withdrawn msg */
 void p_sqldump_add_withdrawn6(struct peer_t *peer, int id, struct timeval *ts, uint8_t prefix[16], uint8_t mask)
 {
 	int sqerr = SQLITE_OK;
+	sqlite3 * pSQL3=NULL;
+
 	p_sqldump_check_file(peer,id,ts);
 
+	sqerr = sqlite3_open_v2( peer[id].sqldbname, &pSQL3, SQLITE_OPEN_READWRITE, NULL);
+	exitOnError(pSQL3, "withdrawn6/open", sqerr);
+	sqlite3_busy_timeout(pSQL3, 10000);
+	sqerr = sqlite3_exec( pSQL3, "BEGIN TRANSACTION", NULL, NULL, NULL );
+
 	sqlite3_stmt  * pstmt;
-	sqerr = sqlite3_prepare_v2( peer[id].psqldb,  "DELETE FROM PREFIX_PATHS_V6 WHERE PREFIX=?; ", -1, &pstmt, NULL);
-	exitOnError(peer[id].psqldb, "withdrawn6/prepare",  sqerr);
+	sqerr = sqlite3_prepare_v2( pSQL3,  "DELETE FROM PREFIX_PATHS_V6 WHERE PREFIX=?; ", -1, &pstmt, NULL);
+	exitOnError(pSQL3, "withdrawn6/prepare",  sqerr);
 
 	char buf[128];
 	inet_ntop(AF_INET6,prefix,buf,INET6_ADDRSTRLEN);
 
 	sqerr = sqlite3_bind_text(pstmt, 1, buf,  -1 , NULL );
-	exitOnError(peer[id].psqldb, "withdrawn6/bind",  sqerr);
+	exitOnError(pSQL3, "withdrawn6/bind",  sqerr);
 	sqerr = sqlite3_step( pstmt);
-	exitOnError(peer[id].psqldb, "withdrawn6/step",  sqerr);
+	exitOnError(pSQL3, "withdrawn6/step",  sqerr);
 	sqerr = sqlite3_finalize( pstmt);
-	exitOnError(peer[id].psqldb, "withdrawn6/finalize",  sqerr);
+	exitOnError(pSQL3, "withdrawn6/finalize",  sqerr);
+
+	sqerr = sqlite3_exec( pSQL3, "COMMIT TRANSACTION", NULL, NULL, NULL );
+	sqlite3_close(pSQL3);
 }
 
 /* log IPv4 bgp announce msg */
@@ -281,8 +331,16 @@ void p_sqldump_add_announce4(struct peer_t *peer, int id, struct timeval *ts,
 			void *extcommunity4,  uint16_t extcommunitylen4,
 			void *largecommunity, uint16_t largecommunitylen )
 {
+	int sqerr = SQLITE_OK;
+	sqlite3 * pSQL3=NULL;
+
 	char aspathbuf[256], prefixbuf[128], nexthopbuf[128];
 	p_sqldump_check_file(peer,id,ts);
+
+	sqerr = sqlite3_open_v2( peer[id].sqldbname, &pSQL3, SQLITE_OPEN_READWRITE, NULL);
+	exitOnError(pSQL3, "bgpclose/open", sqerr);
+	sqlite3_busy_timeout(pSQL3, 10000);
+	sqerr = sqlite3_exec( pSQL3, "BEGIN TRANSACTION", NULL, NULL, NULL );
 
 	peer[id].empty = 0;
 
@@ -320,7 +378,6 @@ void p_sqldump_add_announce4(struct peer_t *peer, int id, struct timeval *ts,
 		}
 
 
-		int sqerr = SQLITE_OK;
 
 		/* prefix  */
 		struct in_addr addr;
@@ -335,10 +392,10 @@ void p_sqldump_add_announce4(struct peer_t *peer, int id, struct timeval *ts,
 
 
 	sqlite3_stmt  * pstmt;
-	sqerr = sqlite3_prepare_v2( peer[id].psqldb,  
+	sqerr = sqlite3_prepare_v2( pSQL3,  
 		"INSERT OR REPLACE  INTO PREFIX_PATHS_V4  (PREFIX,ASPATH,COMMUNITYPATH,NEXTHOP,TIMESTAMP ) VALUES (?,?,?, ?,?); ",
 		-1, &pstmt, NULL);
-	exitOnError(peer[id].psqldb, "announcev4/insert/prepare",  sqerr);
+	exitOnError(pSQL3, "announcev4/insert/prepare",  sqerr);
 
 	sqerr = sqlite3_bind_text(pstmt,  1, prefixbuf,    -1, NULL);
 	sqerr = sqlite3_bind_text(pstmt,  2, aspathbuf,    -1, NULL);
@@ -347,9 +404,12 @@ void p_sqldump_add_announce4(struct peer_t *peer, int id, struct timeval *ts,
 	sqerr = sqlite3_bind_int64(pstmt, 5, msg.ts );
 
 	sqerr = sqlite3_step( pstmt);
-	exitOnError(peer[id].psqldb, "announcev4/step",  sqerr);
+	exitOnError(pSQL3, "announcev4/step",  sqerr);
 	sqerr = sqlite3_finalize( pstmt);
-	exitOnError(peer[id].psqldb, "announcev4/finalize",  sqerr);
+	exitOnError(pSQL3, "announcev4/finalize",  sqerr);
+
+	sqerr = sqlite3_exec( pSQL3, "COMMIT TRANSACTION", NULL, NULL, NULL );
+	sqlite3_close(pSQL3);
 }
 
 /* log IPv6 bgp announce msg */
@@ -361,9 +421,16 @@ void p_sqldump_add_announce6(struct peer_t *peer, int id, struct timeval *ts,
 			void *extcommunity6,  uint16_t extcommunitylen6,
 			void *largecommunity, uint16_t largecommunitylen )
 {
-	char aspathbuf[256], prefixbuf[128], nexthopbuf[128];
+	int sqerr = SQLITE_OK;
+	sqlite3 * pSQL3=NULL;
 
+	char aspathbuf[256], prefixbuf[128], nexthopbuf[128];
 	p_sqldump_check_file(peer,id,ts);
+	
+	sqerr = sqlite3_open_v2( peer[id].sqldbname, &pSQL3, SQLITE_OPEN_READWRITE, NULL);
+	exitOnError(pSQL3, "announcev6/open", sqerr);
+	sqlite3_busy_timeout(pSQL3, 10000);
+	sqerr = sqlite3_exec( pSQL3, "BEGIN TRANSACTION", NULL, NULL, NULL );
 
 	peer[id].empty = 0;
 		struct dump_msg                     msg;
@@ -396,7 +463,6 @@ void p_sqldump_add_announce6(struct peer_t *peer, int id, struct timeval *ts,
 		}
 
 
-		int sqerr = SQLITE_OK;
 
 		/* prefix  */
 		char prefixv6[128];
@@ -408,10 +474,10 @@ void p_sqldump_add_announce6(struct peer_t *peer, int id, struct timeval *ts,
 
 
 	sqlite3_stmt  * pstmt;
-	sqerr = sqlite3_prepare_v2( peer[id].psqldb,  
+	sqerr = sqlite3_prepare_v2( pSQL3,  
 		"INSERT OR REPLACE  INTO PREFIX_PATHS_V6  (PREFIX,ASPATH,COMMUNITYPATH,NEXTHOP,TIMESTAMP ) VALUES (?,?,?, ?,?); ",
 		-1, &pstmt, NULL);
-	exitOnError(peer[id].psqldb, "announcev6/insert/prepare",  sqerr);
+	exitOnError(pSQL3, "announcev6/insert/prepare",  sqerr);
 
 	sqerr = sqlite3_bind_text(pstmt,  1, prefixbuf,    -1, NULL);
 	sqerr = sqlite3_bind_text(pstmt,  2, aspathbuf,    -1, NULL);
@@ -420,15 +486,18 @@ void p_sqldump_add_announce6(struct peer_t *peer, int id, struct timeval *ts,
 	sqerr = sqlite3_bind_int64(pstmt, 5, msg.ts );
 
 	sqerr = sqlite3_step( pstmt);
-	exitOnError(peer[id].psqldb, "announcev6/step",  sqerr);
+	exitOnError(pSQL3, "announcev6/step",  sqerr);
 	sqerr = sqlite3_finalize( pstmt);
-	exitOnError(peer[id].psqldb, "announcev6/finalize",  sqerr);
+	exitOnError(pSQL3, "announcev6/finalize",  sqerr);
+
+	sqerr = sqlite3_exec( pSQL3, "COMMIT TRANSACTION", NULL, NULL, NULL );
+	sqlite3_close(pSQL3);
 }
 
 /* check if need to reopen a new file */
 void p_sqldump_check_file(struct peer_t *peer, int id, struct timeval *ts)
 {
-	if (peer[id].psqldb == NULL ) 
+	if (strlen(peer[id].sqldbname) == 0 ) 
 	{
 		p_sqldump_open_file(peer,id,ts);
 	}
@@ -447,10 +516,5 @@ void p_sqldump_add_header6(struct peer_t *peer, int id, struct timeval *ts)
 /* close file */
 void p_sqldump_close_file(struct peer_t *peer, int id)
 {
-	if (peer[id].psqldb )
-	{
-		sqlite3_close(peer[id].psqldb);
-		peer[id].psqldb=NULL;
-	}
 }
 

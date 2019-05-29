@@ -421,7 +421,6 @@ struct peer_t
 	int      olen;
 	int      sock;
 	char     sqldbname[1024];  /* sql database name */
-	sqlite3  *psqldb;          /* sql handle  */
 };
 
 #endif

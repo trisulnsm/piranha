@@ -223,7 +223,7 @@ void *p_main_peer(void *data)
 				peer[a].smsg   = 0;
 				peer[a].filets = 0;
 				peer[a].fh     = NULL;
-				peer[a].psqldb = NULL;
+				peer[a].sqldbname[0] = 0;
 				peer[a].ucount = 0;
 				peer[a].as4    = 0;
 				peerid         = a;
