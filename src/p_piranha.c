@@ -83,7 +83,7 @@ int main(int argc, char *argv[])
 	{ fprintf(stderr,"error while parsing configuration file %s\n", config.file); return -1; }
 
 	/* chown working dir */
-	mychown(PATH, config.uid, config.gid, 0);
+	// mychown(PATH, config.uid, config.gid, 0);
 
 	/* set config reload for signal HUP */
 	signal(SIGHUP, p_main_sighup);
