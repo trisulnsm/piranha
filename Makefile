@@ -92,7 +92,7 @@ prepare:
 	$(RUN_PRINT)$(PRINTF1) MKDIR "$(OBJ) $(BIN)"
 	$(RUN_EXEC)$(MKDIR) -p $(OBJ) $(BIN)
 
-$(BIN)/trisul_piranha: $(OBJ)/p_tools.o $(OBJ)/p_config.o $(OBJ)/p_socket.o $(OBJ)/p_log.o $(OBJ)/p_dump.o $(OBJ)/p_sqldump.o  $(OBJ)/p_piranha.o $(OBJ)/sqlite3.o
+$(BIN)/trisul_piranha: $(OBJ)/p_tools.o $(OBJ)/p_config.o $(OBJ)/p_socket.o $(OBJ)/p_log.o $(OBJ)/p_dump.o $(OBJ)/p_sqldump.o  $(OBJ)/p_piranha.o $(OBJ)/sqlite3.o $(OBJ)/log.o
 	$(RUN_PRINT)$(PRINTF2) LINK $@ "$^"
 	$(RUN_EXEC)$(CC) -o $@ $^ $(LDFLAGS)
 	$(PRINTF2) INFO "Compilation done" $@

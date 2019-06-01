@@ -60,6 +60,7 @@
 #  endif
 #endif
 
+#define PEERLOGDIR PATH "/var/log"
 #define LOGFILE    PATH "/var/piranha.log"
 #define STATUSFILE PATH "/var/piranha.status"
 #define STATUSTEMP PATH "/var/piranha.status.temp"
@@ -421,6 +422,7 @@ struct peer_t
 	int      olen;
 	int      sock;
 	char     sqldbname[1024];  /* sql database name */
+	FILE    *logfd;            /* for logging, we need this */
 };
 
 #endif
