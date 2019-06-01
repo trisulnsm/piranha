@@ -60,11 +60,11 @@
 #  endif
 #endif
 
-#define PEERLOGDIR PATH "/var/log"
-#define LOGFILE    PATH "/var/piranha.log"
-#define STATUSFILE PATH "/var/piranha.status"
-#define STATUSTEMP PATH "/var/piranha.status.temp"
-#define PIDFILE    PATH "/var/piranha.pid"
+#define PEERLOGDIR PATH "/var/log/trisul-probe"
+#define LOGFILE    PATH "/var/log/trisul-probe/piranha.log"
+#define STATUSFILE PATH "/var/log/trisul-probe/piranha.status"
+#define STATUSTEMP PATH "/var/log/trisul-probe/piranha.status.temp"
+#define PIDFILE    PATH "/var/run/trisul/piranha.pid"
 #define DUMPDIR    PATH "/var/ramdisk"
 
 #define INPUT_BUFFER  1048576
