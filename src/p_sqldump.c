@@ -449,7 +449,7 @@ void p_sqldump_add_announce6(struct peer_t *peer, int id, struct timeval *ts,
 	sqlite3 * pSQL3=NULL;
 	sqlite3_stmt  * pstmt=NULL;
 
-	char aspathbuf[1024], prefixbuf[128], nexthopbuf[128];
+	char aspathbuf[1024], prefixbuf[256], nexthopbuf[128];
 	p_sqldump_check_file(peer,id,ts);
 	
 	sqerr = sqlite3_open_v2( peer[id].sqldbname, &pSQL3, SQLITE_OPEN_READWRITE, NULL);
@@ -495,7 +495,7 @@ void p_sqldump_add_announce6(struct peer_t *peer, int id, struct timeval *ts,
 		/* prefix  */
 		char prefixv6[128];
 		inet_ntop(AF_INET6,prefix,prefixv6,INET6_ADDRSTRLEN);
-		sprintf(prefixbuf,"%s/%d",  prefixv6, mask);
+		snprintf(prefixbuf,sizeof(prefixbuf),"%s/%d",  prefixv6, mask);
 
 		/* nexthop buf */
 		inet_ntop(AF_INET6,nexthop,nexthopbuf,INET6_ADDRSTRLEN);
