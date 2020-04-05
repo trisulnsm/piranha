@@ -99,7 +99,7 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 		else if ( !strcmp(s,"local_as"))
 		{
 			s = strtok(NULL, " ");
-			if ( s != NULL && strlen(s) > 0 && strlen(s) <=  6 )
+			if ( s != NULL && strlen(s) > 0 && strlen(s) <= 6 )
 			{
 				config->as = atol(s);
 				#ifdef DEBUG
