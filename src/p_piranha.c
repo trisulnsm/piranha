@@ -44,11 +44,38 @@
 #include <p_sqldump.h>
 #include <p_tools.h>
 
+#include <errno.h>
+
 
 /* init the global structures */
 struct config_t config;
 struct peer_t   peer[MAX_PEERS];
 struct timeval  ts;
+
+/* defaults  */
+char * g_PEERLOGDIR = PEERLOGDIR;
+char * g_LOGFILE    = LOGFILE;
+char * g_STATUSFILE = STATUSFILE;
+char * g_STATUSTEMP = STATUSTEMP;
+char * g_PIDFILE    = PIDFILE;
+char * g_DUMPDIR    = DUMPDIR;
+
+#ifdef DEBUG
+int    g_DEBUG      = 1;
+#else
+int    g_DEBUG      = 0;
+#endif  
+
+
+
+/*
+#define PEERLOGDIR PATH "/var/log/trisul-probe"
+#define LOGFILE    PATH "/var/log/trisul-probe/piranha.log"
+#define STATUSFILE PATH "/var/log/trisul-probe/piranha.status"
+#define STATUSTEMP PATH "/var/log/trisul-probe/piranha.status.temp"
+#define PIDFILE    PATH "/var/run/trisul/piranha.pid"
+#define DUMPDIR    PATH "/var/ramdisk"
+*/
 
 
 /* 00 BEGIN ;) */
@@ -59,9 +86,6 @@ int main(int argc, char *argv[])
 	printf("Piranha v%s.%s.%s BGP Daemon, Copyright(c) 2004-2017 Pascal Gloor\n",P_VER_MA,P_VER_MI,P_VER_PL);
 	#endif
 
-	#ifdef DEBUG
-	setlinebuf(stdout);
-	#endif
 
 
 	/* set initial time */
@@ -79,8 +103,15 @@ int main(int argc, char *argv[])
 	/* init some stuff and load the config */
 	config.file = argv[1];
 
-	if ( p_config_load((struct config_t*)&config,(struct peer_t*)peer, (time_t)ts.tv_sec) == -1 )
-	{ fprintf(stderr,"error while parsing configuration file %s\n", config.file); return -1; }
+	if ( p_config_load((struct config_t*)&config,(struct peer_t*)peer, (time_t)ts.tv_sec) == -1 ) { 
+		fprintf(stderr,"error while parsing configuration file %s\n", config.file); 
+		return -1; 
+	}
+
+
+	if ( g_DEBUG) {
+		setlinebuf(stdout);
+	}
 
 	/* chown working dir */
 	// mychown(PATH, config.uid, config.gid, 0);
@@ -91,25 +122,25 @@ int main(int argc, char *argv[])
 	/* init the socket */
 	if ( p_socket_start((struct config_t*)&config, (struct peer_t*)&peer) == -1 )
 	{
-		fprintf(stderr,"socket error, aborting\n");
+		fprintf(stderr,"socket error, aborting %s\n", strerror(errno) );
 	 	return -1;
 	}
 
 
-	#ifndef DEBUG
-	/* we dont use daemon() here, it doesnt exist on solaris/suncc ;-) */
-	/* daemon(1,0); */
-	if ( mydaemon(1,0) ) { fprintf(stderr,"daemonization error.\n"); }
-	#endif
+	if (! g_DEBUG) {
+		/* we dont use daemon() here, it doesnt exist on solaris/suncc ;-) */
+		/* daemon(1,0); */
+		if ( mydaemon(1,0) ) { fprintf(stderr,"daemonization error.\n"); }
+	}
 
 	/* log the pid */
 	p_log_pid();
 
 	while ( p_main_loop() == 0 )
 	{
-		#ifdef DEBUG
-		printf("accept() loop\n");
-		#endif
+		if (g_DEBUG) {
+			printf("accept() loop\n");
+		}
 
 		/* we want to sessions to come up slowly */
 		/* therefor we sleep a bit here. */
@@ -121,9 +152,9 @@ int main(int argc, char *argv[])
 		gettimeofday(&ts,NULL);
 	}
 
-	#ifdef DEBUG
-	printf("accept() failed, aborting\n");
-	#endif
+	if (g_DEBUG) {
+		printf("main loop accept() failed, aborting\n");
+	}
 
 	return -1;
 }
@@ -164,34 +195,35 @@ void *p_main_peer(void *data)
 
 	memcpy(&sock,data,sizeof(sock));
 
-	#ifdef DEBUG
-	printf("I'm thready, my socket is %i\n",sock);
-	#endif
+	if (g_DEBUG) {
+		printf("I'm thready, my socket is %i\n",sock);
+	}
 
 	if ( getpeername(sock,(struct sockaddr*)&sockaddr, &socklen) == -1 )
 	{
-		#ifdef DEBUG
-		printf("failed to get peeraddr!\n");
-		#endif
+		if (g_DEBUG) {
+			printf("failed to get peeraddr! %d, %s\n", errno, strerror(errno) );
+		}
 		p_main_peer_exit(data,sock);
 	}
 
-	#ifdef DEBUG
-	if ( sockaddr.ss_family == AF_INET )
-	{
-		char str[INET_ADDRSTRLEN];
-		printf("peer ip is: %s\n", inet_ntop(AF_INET, &addr4->sin_addr, str, sizeof(str)));
+	/* info about remote peer */ 
+	if (g_DEBUG) {
+		if ( sockaddr.ss_family == AF_INET )
+		{
+			char str[INET_ADDRSTRLEN];
+			printf("peer ip is: %s\n", inet_ntop(AF_INET, &addr4->sin_addr, str, sizeof(str)));
+		}
+		else if ( sockaddr.ss_family == AF_INET6 )
+		{
+			char str[INET6_ADDRSTRLEN];
+			printf("peer ip is: %s\n", inet_ntop(AF_INET6, &addr6->sin6_addr, str, sizeof(str)));
+		}
+		else
+		{
+			printf("peer has an unsupported address family! (%i)\n", sockaddr.ss_family);
+		}
 	}
-	else if ( sockaddr.ss_family == AF_INET6 )
-	{
-		char str[INET6_ADDRSTRLEN];
-		printf("peer ip is: %s\n", inet_ntop(AF_INET6, &addr6->sin6_addr, str, sizeof(str)));
-	}
-	else
-	{
-		printf("peer has an unsupported address family! (%i)\n", sockaddr.ss_family);
-	}
-	#endif
 
 	/* does the peer exist? */
 	for(a=0; a<MAX_PEERS; a++)
@@ -206,9 +238,9 @@ void *p_main_peer(void *data)
 				snprintf(logline,sizeof(logline), "%s connection (known)\n",
 					sockaddr.ss_family == AF_INET ? p_tools_ip4str(a, &peer[a].ip4) : p_tools_ip6str(a, &peer[a].ip6) );
 				p_log_add((time_t)ts.tv_sec, logline);
-				#ifdef DEBUG
-				printf("peer ip allowed id %i\n",a);
-				#endif
+				if (g_DEBUG) {
+					printf("peer ip allowed id %i\n",a);
+				}
 				allow          = 1;
 				peer[a].sock   = sock;
 				peer[a].status = 1;
@@ -254,9 +286,9 @@ void *p_main_peer(void *data)
 		p_main_peer_exit(data,sock);
 	}
 
-	#ifdef DEBUG
-	printf("peerid %i\n",peerid);
-	#endif
+	if (g_DEBUG) {
+		printf("peerid %i\n",peerid);
+	}
 
 	p_main_peer_loop(peerid);
 	gettimeofday(&msgtime, NULL);
@@ -291,10 +323,10 @@ void p_main_peer_loop(int id)
 	ibuf = malloc(INPUT_BUFFER);
 	obuf = malloc(OUTPUT_BUFFER);
 
-	#ifdef DEBUG
-	printf("peer status %u\n",peer[id].status);
-	printf("starting peer loop\n");
-	#endif
+	if (g_DEBUG) {
+		printf("peer status %u\n",peer[id].status);
+		printf("starting peer loop\n");
+	}
 
 	p_main_peer_open(id, obuf);
 
@@ -316,9 +348,9 @@ void p_main_peer_loop(int id)
 		}
 		else if ( tlen > 0 )
 		{
-			#ifdef DEBUG
-			printf("got data\n");
-			#endif
+			if (g_DEBUG) {
+				printf("got data\n");
+			}
 			peer[id].ilen += tlen;
 		}
 		else
@@ -326,9 +358,9 @@ void p_main_peer_loop(int id)
 			snprintf(logline, sizeof(logline), "%s socket went down\n",
 				peer[id].af == 4 ? p_tools_ip4str(id, &peer[id].ip4) : p_tools_ip6str(id, &peer[id].ip6) );
 			p_log_add((time_t)ts.tv_sec, logline);
-			#ifdef DEBUG
-			printf("something failed on recv()\n");
-			#endif
+			if (g_DEBUG) {
+				printf("something failed on recv() %d %s\n", errno, strerror(errno));
+			}
 			peer[id].status = 0;
 		}
 
@@ -377,9 +409,9 @@ void p_main_peer_loop(int id)
 			p_main_peer_send(id, obuf);
 			if ( peer[id].olen == -1 )
 			{
-				#ifdef DEBUG
-				printf("failed to send!\n");
-				#endif
+				if (g_DEBUG) {
+					printf("failed to send to peer  %d, %s\n", errno, strerror(errno));
+				}
 				snprintf(logline, sizeof(logline), "%s failed to send\n",
 					peer[id].af == 4 ? p_tools_ip4str(id, &peer[id].ip4) : p_tools_ip6str(id, &peer[id].ip6) );
 				p_log_add((time_t)ts.tv_sec, logline);
@@ -405,9 +437,9 @@ void p_main_peer_loop(int id)
 
 	peer[id].cts = ts.tv_sec;
 
-	#ifdef DEBUG
-	printf("peer is gone\n");
-	#endif
+	if (g_DEBUG) {
+		printf("peer is gone id=%d\n", id);
+	}
 }
 
 /* sending BGP open and first keepalive */
@@ -512,9 +544,9 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 
 		if ( peer[id].ilen < sizeof(struct bgp_header) )
 		{
-			#ifdef DEBUG
-			printf("not all header\n");
-			#endif
+			if (g_DEBUG) {
+				printf("received short header expected=%lu, received=%d\n", sizeof(struct bgp_header), peer[id].ilen);
+			}
 			return;
 		}
 
@@ -526,29 +558,29 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 			snprintf(logline, sizeof(logline), "%s packet decoding error\n",
 				peer[id].af == 4 ? p_tools_ip4str(id, &peer[id].ip4) : p_tools_ip6str(id, &peer[id].ip6) );
 			p_log_add((time_t)ts.tv_sec, logline);
-			#ifdef DEBUG
-			printf("invalid marker\n");
-			#endif
+			if (g_DEBUG) {
+				printf("invalid marker packet decoding error BGP marker\n");
+			}
 			peer[id].status = 0;
 			return;
 		}
 
-		#ifdef DEBUG
-		printf("len: %u type: %u (buffer %u)\n",htons(header->len),header->type,peer[id].ilen);
-		#endif
+		if (g_DEBUG) {
+			printf("len: %u type: %u (buffer %u)\n",htons(header->len),header->type,peer[id].ilen);
+		}
 
 		if ( peer[id].ilen < htons(header->len) )
 		{
-			#ifdef DEBUG
-			printf("bgp message not complete msg len %u, buffer len %u\n",htons(header->len),peer[id].ilen);
-			#endif
+			if (g_DEBUG) {
+				printf("bgp message not complete msg len %u, buffer len %u\n",htons(header->len),peer[id].ilen);
+			}
 			return;
 		}
 
 		/* show bgp message */
-		#ifdef DEBUG
-		p_tools_dump("BGP Message", ibuf, htons(header->len));
-		#endif
+		if(g_DEBUG) {
+			p_tools_dump("BGP Message", ibuf, htons(header->len));
+		}
 
 
 		pos += BGP_HEADER_LEN;
@@ -571,15 +603,15 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 					peer[id].af == 4 ? p_tools_ip4str(id, &peer[id].ip4) : p_tools_ip6str(id, &peer[id].ip6),
 					bopen->version);
 				p_log_add((time_t)ts.tv_sec, logline);
-				#ifdef DEBUG
-				printf("invalid BGP version %u\n",bopen->version);
-				#endif
+				if (g_DEBUG) {
+					printf("invalid BGP version %u\n",bopen->version);
+				}
 				peer[id].status = 0;
 				return;
 			}
-			#ifdef DEBUG
-			printf("BGP Version: %u\n",bopen->version);
-			#endif
+			if (g_DEBUG) {
+				printf("BGP Version: %u\n",bopen->version);
+			}
 
 			if ( htons(bopen->as) == 23456 ) /* AS_TRANS RFC6793 */
 			{
@@ -591,9 +623,9 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 					peer[id].af == 4 ? p_tools_ip4str(id, &peer[id].ip4) : p_tools_ip6str(id, &peer[id].ip6),
 					htons(bopen->as),peer[id].as);
 				p_log_add((time_t)ts.tv_sec, logline);
-				#ifdef DEBUG
-				printf("invalid BGP neighbor AS %u\n",htons(bopen->as));
-				#endif
+				if(g_DEBUG) {
+					printf("invalid BGP neighbor AS %u\n",htons(bopen->as));
+				}
 				peer[id].status = 0;
 				return;
 			}
@@ -610,9 +642,9 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 				snprintf(logline, sizeof(logline), "%s parameter parsing error)\n",
 					peer[id].af == 4 ? p_tools_ip4str(id, &peer[id].ip4) : p_tools_ip6str(id, &peer[id].ip6) );
 				p_log_add((time_t)ts.tv_sec, logline);
-				#ifdef DEBUG
+				if (g_DEBUG) {
 				printf("size error in bgp open params, len %u, header %u open %u param %u\n",htons(header->len),BGP_HEADER_LEN,BGP_OPEN_LEN,bopen->param_len);
-				#endif
+				}
 				peer[id].status = 0;
 				return;
 			}
@@ -623,9 +655,9 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 			{
 				struct bgp_param *param;
 				param = (struct bgp_param*) (ibuf+pos);
-				#ifdef DEBUG
-				printf("param code %u len %u\n",param->type,param->len);
-				#endif
+				if (g_DEBUG) {
+					printf("param code %u len %u\n",param->type,param->len);
+				}
 				if ( param->type == 2 ) // BGP Capabilities
 				{
 					int i = 0;
@@ -635,13 +667,13 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 					{
 						capa = (struct bgp_param_capa*) (param->param + i);
 
-						#ifdef DEBUG
-						int b;
-						printf("capability %u (%s) len %u : ", capa->type, bgp_capability[capa->type], capa->len);
-						for(b=0; b<capa->len; b++)
-							printf("%02x ", (uint8_t)capa->u.def[b]);
-						printf("\n");
-						#endif
+						if (g_DEBUG) {
+							int b;
+							printf("capability %u (%s) len %u : ", capa->type, bgp_capability[capa->type], capa->len);
+							for(b=0; b<capa->len; b++)
+								printf("%02x ", (uint8_t)capa->u.def[b]);
+							printf("\n");
+						}
 
 						if ( capa->type == 65 && capa->len == 4 ) /* Support for 4-octets ASN */
 						{
@@ -662,22 +694,23 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 						i += 1 + 1 + capa->len;
 					}
 				}
-				#ifdef DEBUG
 				else
 				{
-					int b;
-					for(b=0; b<param->len; b++)
-						printf("%u ",(uint8_t)param->param[b]);
-					printf("\n");
+					if (g_DEBUG) {
+						printf("unknown param printing\n");
+						int b;
+						for(b=0; b<param->len; b++)
+							printf("%u ",(uint8_t)param->param[b]);
+						printf("\n");
+					}
 				}
-				#endif
 				pos += 2;
 				pos += param->len;
 				if ( param->type > 4 )
 				{
-					#ifdef DEBUG
-					printf("parameter rejected!\n");
-					#endif
+					if (g_DEBUG) {
+						printf("parameter rejected!\n");
+					}
 					peer[id].status = 0;
 					return;
 				}
@@ -723,9 +756,9 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 			wlen = ntohs(wlen);
 			pos += 2;
 
-			#ifdef DEBUG
-			printf("Withdrawn Length %u\n",wlen);
-			#endif
+			if (g_DEBUG) {
+				printf("Withdrawn Length %u\n",wlen);
+			}
 
 			while(wlen>0)
 			{
@@ -763,13 +796,12 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 				pos+=blen;
 				wlen-= blen;
 
-				#ifdef DEBUG
-				{
+
+				if (g_DEBUG) {
 					struct in_addr addr;
 					addr.s_addr = htonl(prefix);
 					printf("withdrawn %s/%u (post-clean)\n",inet_ntoa(addr),plen);
 				}
-				#endif
 
 				/* cleanup prefix: zero-ing unused bits */
 				if ( plen == 0 )
@@ -777,13 +809,11 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 				else
 					prefix &= ( 0xffffffff ^ ( ( 1 << ( 32 - plen ) ) - 1 ) );
 
-				#ifdef DEBUG
-				{
+				if (g_DEBUG) {
 					struct in_addr addr;
 					addr.s_addr = htonl(prefix);
 					printf("withdrawn %s/%u (post-clean)\n",inet_ntoa(addr),plen);
 				}
-				#endif
 
 				p_sqldump_add_withdrawn4(peer,id,&msgtime,prefix,plen);
 				peer[id].ucount++;
@@ -792,9 +822,9 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 			alen = *(uint16_t *) (ibuf + pos);
 			alen = ntohs(alen);
 
-			#ifdef DEBUG
-			printf("announce size: %u\n",alen);
-			#endif
+			if (g_DEBUG) {
+				printf("announce size: %u\n",alen);
+			}
 
 			pos+=2;
 
@@ -851,20 +881,20 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 						return;
 					}
 
-					#ifdef DEBUG
+					if (g_DEBUG) {
 
-					printf("code: at offset %u of length %u is %u (%s) (",
-						a[code].pos, a[code].len, code, bgp_path_attribute[code]);
+						printf("code: at offset %u of length %u is %u (%s) (",
+							a[code].pos, a[code].len, code, bgp_path_attribute[code]);
 
-					if ( flags & 0x80 ) { printf(" optional");   } else { printf(" well-known"); }
-					if ( flags & 0x40 ) { printf(" transitive"); } else { printf(" non-transitive"); }
-					if ( flags & 0x20 ) { printf(" partial");    } else { printf(" complete"); }
-					if ( flags & 0x10 ) { printf(" 2octet");     } else { printf(" 1octet"); }
-					printf(")\n");
+						if ( flags & 0x80 ) { printf(" optional");   } else { printf(" well-known"); }
+						if ( flags & 0x40 ) { printf(" transitive"); } else { printf(" non-transitive"); }
+						if ( flags & 0x20 ) { printf(" partial");    } else { printf(" complete"); }
+						if ( flags & 0x10 ) { printf(" 2octet");     } else { printf(" 1octet"); }
+						printf(")\n");
 
-					p_tools_dump(bgp_path_attribute[code], ibuf+pos+a[code].pos, a[code].len);
+						p_tools_dump(bgp_path_attribute[code], ibuf+pos+a[code].pos, a[code].len);
 
-					#endif
+					}
 
 				}
 
@@ -876,9 +906,9 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 					if ( codelen == 1 )
 					{
 						origin = *(uint8_t*) (ibuf+pos+off);
-						#ifdef DEBUG
-						printf("ORIGIN: %u (%s)\n", origin, bgp_origin[origin]);
-						#endif
+						if (g_DEBUG) {
+							printf("ORIGIN: %u (%s)\n", origin, bgp_origin[origin]);
+						}
 					}
 				}
 
@@ -890,9 +920,9 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 					if ( codelen == 4 )
 					{
 						nexthop = be32toh(*(uint32_t*) (ibuf+pos+off));
-						#ifdef DEBUG
-						printf("NEXT_HOP: %s\n", p_tools_ip4str(id, (ibuf+pos+off)) );
-						#endif
+						if (g_DEBUG) {
+							printf("NEXT_HOP: %s\n", p_tools_ip4str(id, (struct in_addr*) (ibuf+pos+off)) );
+						}
 					}
 				}
 
@@ -906,50 +936,50 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 
 					if ( codelen == 0 )
 					{
-						#ifdef DEBUG
-						printf("Empty ASPATH (iBGP)\n");
-						aspathlen = 0;
-						#endif
+						if (g_DEBUG) {
+							printf("Empty ASPATH (iBGP)\n");
+							aspathlen = 0;
+						}
 					}
 					else if ( aspath_type == 1 )
 					{
-						#ifdef DEBUG
-						printf("AS_SET %u\n",aspath_len);
-						#endif
+						if (g_DEBUG) {
+							printf("AS_SET %u\n",aspath_len);
+						}
 					}
 					else if ( aspath_type == 2 )
 					{
-						#ifdef DEBUG
-						printf("AS_PATH %u\n",aspath_len);
-						if ( peer[id].as4 == 1 )
-						{
-							int b;
-							for(b=0; b<aspath_len; b++)
+						if (g_DEBUG) {
+							printf("AS_PATH %u\n",aspath_len);
+							if ( peer[id].as4 == 1 )
 							{
-								uint32_t toto = *(uint32_t*)(ibuf+pos+off+2+(b*4));
-								printf("%5u ",ntohl(toto));
+								int b;
+								for(b=0; b<aspath_len; b++)
+								{
+									uint32_t toto = *(uint32_t*)(ibuf+pos+off+2+(b*4));
+									printf("%5u ",ntohl(toto));
+								}
+								printf("\n");
 							}
-							printf("\n");
-						}
-						else
-						{
-							int b;
-							for(b=0; b<aspath_len; b++)
+							else
 							{
-								uint32_t toto = *(uint16_t*)(ibuf+pos+off+2+(b*2));
-								printf("%5u ",ntohs(toto));
+								int b;
+								for(b=0; b<aspath_len; b++)
+								{
+									uint32_t toto = *(uint16_t*)(ibuf+pos+off+2+(b*2));
+									printf("%5u ",ntohs(toto));
+								}
+								printf("\n");
 							}
-							printf("\n");
 						}
-						#endif
 						aspath = (void *)(ibuf+pos+off+2);
 						aspathlen = aspath_len;
 					}
 					else
 					{
-						#ifdef DEBUG
-						printf("error in aspath code, type %u unknown (len %u)\n",aspath_type,aspath_len);
-						#endif
+						if (g_DEBUG) {
+							printf("error in aspath code, type %u unknown (len %u)\n",aspath_type,aspath_len);
+						}
 
 						snprintf(logline, sizeof(logline), "%s error in aspath code\n",
 							peer[id].af == 4 ? p_tools_ip4str(id, &peer[id].ip4) : p_tools_ip6str(id, &peer[id].ip6) );
@@ -1068,8 +1098,7 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 							if ( plen % 8 )
 								prefix6[blen-1] = prefix6[blen-1] & ( 0xff - ((1<<(8-(plen%8)))-1) );
 
-							#ifdef DEBUG
-							{
+							if (g_DEBUG) {
 								char v6[40];
 								struct in6_addr in6;
 
@@ -1083,7 +1112,6 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 
 								printf("IPv6 prefix = %s/%u\n", p_tools_ip6str(id, &in6), plen);
 							}
-							#endif
 
 							p_sqldump_add_announce6( peer, id, &msgtime, prefix6, plen, origin, nh,
 								aspath,         aspathlen,
@@ -1095,12 +1123,12 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 						}
 
 					}
-					#ifdef DEBUG
 					else
 					{
-						printf("error MP_REACH_NLRI, unsupported address family %u, subsequent address family %u\n",afi,safi);
+						if (g_DEBUG) {
+							printf("error MP_REACH_NLRI, unsupported address family %u, subsequent address family %u\n",afi,safi);
+						}
 					}
-					#endif
 				}
 
 				if ( a[BGP_ATTR_MP_UNREACH_NLRI].pos != 0xffff )
@@ -1133,8 +1161,7 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 							if ( plen % 8 )
 								prefix6[blen-1] = prefix6[blen-1] & ( 0xff - ((1<<(8-(plen%8)))-1) );
 
-							#ifdef DEBUG
-							{
+							if (g_DEBUG) {
 								char v6[40];
 								struct in6_addr in6;
 
@@ -1148,7 +1175,6 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 
 								printf("IPv6 prefix = %s/%u\n", p_tools_ip6str(id, &in6), plen);
 							}
-							#endif
 
 							p_sqldump_add_withdrawn6(
 								peer,
@@ -1160,12 +1186,12 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 						}
 
 					}
-					#ifdef DEBUG
 					else
 					{
-						printf("error MP_REACH_NLRI, unsupported address family %u, subsequent address family %u\n",afi,safi);
+						if (g_DEBUG) {
+							printf("error MP_REACH_NLRI, unsupported address family %u, subsequent address family %u\n",afi,safi);
+						}
 					}
-					#endif
 				}
 			}
 
@@ -1204,13 +1230,11 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 				}
 				pos+=blen;
 
-				#ifdef DEBUG
-				{
+				if (g_DEBUG) {
 					struct in_addr addr;
 					addr.s_addr = htonl(prefix);
 					printf("announce %s/%u (pre-clean)\n",inet_ntoa(addr),plen);
 				}
-				#endif
 
 				/* cleanup prefix: zero-ing unused bits */
 				if ( plen == 0 )
@@ -1218,13 +1242,11 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 				else
 					prefix &= ( 0xffffffff ^ ( ( 1 << ( 32 - plen ) ) - 1 ) );
 
-				#ifdef DEBUG
-				{
+				if (g_DEBUG) {
 					struct in_addr addr;
 					addr.s_addr = htonl(prefix);
 					printf("announce %s/%u (post-clean)\n",inet_ntoa(addr),plen);
 				}
-				#endif
 
 				p_sqldump_add_announce4(peer,id, &msgtime, prefix, plen, origin, nexthop,
 					aspath,         aspathlen,
@@ -1243,9 +1265,9 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 
 			error = (struct bgp_error*) (ibuf + pos);
 
-			#ifdef DEBUG
-			printf("error code : %i/%i\n",error->code,error->subcode);
-			#endif
+			if (g_DEBUG) {
+				printf("error code : %i/%i\n",error->code,error->subcode);
+			}
 
 			pos += BGP_ERROR_LEN;
 
@@ -1260,15 +1282,15 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 			/* keepalive packet */
 			peer[id].rts = ts.tv_sec;
 			p_sqldump_add_keepalive(peer, id, &msgtime);
-			#ifdef DEBUG
-			printf("received keepalive\n");
-			#endif
+			if (g_DEBUG) {
+				printf("received keepalive\n");
+			}
 		}
 		else
 		{
-			#ifdef DEBUG
-			printf("invalid header type %u\n",header->type);
-			#endif
+			if (g_DEBUG) {
+				printf("invalid header type %u\n",header->type);
+			}
 
 			snprintf(logline, sizeof(logline), "%s invalid message type\n",
 				peer[id].af == 4 ? p_tools_ip4str(id, &peer[id].ip4) : p_tools_ip6str(id, &peer[id].ip6) );
@@ -1279,9 +1301,9 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 
 		if ( htons(header->len) != pos )
 		{
-			#ifdef DEBUG
-			printf("something went wrong with the packet size\n");
-			#endif
+			if (g_DEBUG) {
+				printf("something went wrong with the packet size\n");
+			}
 
 			snprintf(logline, sizeof(logline), "%s error in packet size\n",
 				peer[id].af == 4 ? p_tools_ip4str(id, &peer[id].ip4) : p_tools_ip6str(id, &peer[id].ip6) );
@@ -1296,9 +1318,9 @@ void p_main_peer_work(char *ibuf, char *obuf, int id)
 			return;
 		}
 
-		#ifdef DEBUG
-		printf("still got datas!\n");
-		#endif
+		if (g_DEBUG) {
+			printf("still got datas!\n");
+		}
 
 		memmove(ibuf, ibuf+htons(header->len), peer[id].ilen-htons(header->len));
 		peer[id].ilen -= pos;
@@ -1313,46 +1335,46 @@ void p_main_peer_send(int id, char *obuf)
 	{
 		int slen = 0;
 
-		#ifdef DEBUG
-		printf("something to send\n");
-		#endif
+		if (g_DEBUG) {
+			printf("something to send len=%d\n", peer[id].olen);
+		}
 
 		slen = send(peer[id].sock, obuf, peer[id].olen, 0);
 
 		if ( slen == peer[id].olen )
 		{
-			#ifdef DEBUG
-			printf("send ok\n");
-			#endif
+			if (g_DEBUG) {
+				printf("send ok\n");
+			}
 			peer[id].olen = 0;
 		}
 		else if ( slen == 0 )
 		{
-			#ifdef DEBUG
-			printf("couldnt send anything\n");
-			#endif
+			if (g_DEBUG) {
+				printf("couldnt send anything\n");
+			}
 			peer[id].olen = -1;
 		}
 		else if ( slen == -1 )
 		{
-			#ifdef DEBUG
-			printf("failed to send()\n");
-			#endif
+			if (g_DEBUG) {
+				printf("failed to send()\n");
+			}
 			peer[id].olen = -1;
 		}
 		else if ( slen < peer[id].olen )
 		{
-			#ifdef DEBUG
-			printf("cound not send all\n");
-			#endif
+			if (g_DEBUG) {
+				printf("cound not send all\n");
+			}
 			memmove(obuf, obuf+slen, peer[id].olen-slen);
 			peer[id].olen -= slen;
 		}
 		else
 		{
-			#ifdef DEBUG
-			printf("impossible send() case!\n");
-			#endif
+			if (g_DEBUG) {
+				printf("impossible send() case!\n");
+			}
 			peer[id].olen = -1;
 		}
 	}
@@ -1362,9 +1384,9 @@ void p_main_peer_send(int id, char *obuf)
 /* peer exit, thread exit */
 void p_main_peer_exit(void *data, int sock)
 {
-	#ifdef DEBUG
-	printf("dead thready with socket %i\n",sock);
-	#endif
+	if (g_DEBUG) {
+		printf("dead thready with socket %i\n",sock);
+	}
 
 	close(sock);
 
@@ -1384,11 +1406,11 @@ void p_main_sighup(int sig)
 {
 	if ( p_config_load((struct config_t*)&config,(struct peer_t*)peer, (time_t)ts.tv_sec) == -1 )
 	{
-		#ifdef DEBUG
-		printf("failed to reload config!\n");
-		#else
-		p_log_add((time_t)ts.tv_sec, "failed to reload configuration\n");
-		#endif
+		if (g_DEBUG) {
+			printf("failed to reload config!\n");
+		} else {
+			p_log_add((time_t)ts.tv_sec, "failed to reload configuration\n");
+		}
 		exit(1);
 	}
 
@@ -1409,41 +1431,41 @@ int mydaemon(int nochdir, int noclose)
 	/* set new uid/gid */
 	if ( setgid(config.gid) == -1 )
 	{
-		#ifdef DEBUG
-		printf("failed to set setgid()\n");
-		#else
-		p_log_add((time_t)ts.tv_sec, "failed to set setgid()\n");
-		#endif
+		if (g_DEBUG) {
+			printf("failed to set setgid()\n");
+		} else {
+			p_log_add((time_t)ts.tv_sec, "failed to set setgid()\n");
+		}
 		return (-1);
 	}
 
 	if ( setegid(config.gid) == -1 )
 	{
-		#ifdef DEBUG
-		printf("failed to set setegid()\n");
-		#else
-		p_log_add((time_t)ts.tv_sec, "failed to set setegid()\n");
-		#endif
+		if (g_DEBUG) {
+			printf("failed to set setegid()\n");
+		} else {
+			p_log_add((time_t)ts.tv_sec, "failed to set setegid()\n");
+		}
 		return (-1);
 	}
 
 	if ( setuid(config.uid) == -1 )
 	{
-		#ifdef DEBUG
-		printf("failed to set setuid()\n");
-		#else
-		p_log_add((time_t)ts.tv_sec, "failed to set setuid()\n");
-		#endif
+		if (g_DEBUG) {
+			printf("failed to set setuid()\n");
+		} else {
+			p_log_add((time_t)ts.tv_sec, "failed to set setuid()\n");
+		}
 		return (-1);
 	}
 
 	if ( seteuid(config.uid) == -1 )
 	{
-		#ifdef DEBUG
-		printf("failed to set seteuid()\n");
-		#else
-		p_log_add((time_t)ts.tv_sec, "failed to set seteuid()\n");
-		#endif
+		if (g_DEBUG) {
+			printf("failed to set seteuid()\n");
+		} else {
+			p_log_add((time_t)ts.tv_sec, "failed to set seteuid()\n");
+		}
 		return (-1);
 	}
 
@@ -1461,11 +1483,11 @@ int mydaemon(int nochdir, int noclose)
 
 	if ( !nochdir && chdir("/") == -1 )
 	{
-		#ifdef DEBUG
-		printf("failed to chdir to /\n");
-		#else
-		p_log_add((time_t)ts.tv_sec, "failed to chdir to /\n");
-		#endif
+		if (g_DEBUG) {
+			printf("failed to chdir to /\n");
+		} else {
+			p_log_add((time_t)ts.tv_sec, "failed to chdir to /\n");
+		}
 		return (-1);
 	}
 

@@ -32,6 +32,11 @@
 #include <p_tools.h>
 #include <stdlib.h>
 #include <log.h>
+#include <errno.h>
+
+
+extern char * g_DUMPDIR;
+extern int    g_DEBUG;
 
 #define LOGFD  peer[id].logfd 
 
@@ -78,17 +83,17 @@ void p_sqldump_open_file(struct peer_t *peer, int id, struct timeval *ts)
 	sqlite3_stmt  * pstmt=NULL;
 
 	snprintf(peer[id].sqldbname, sizeof(peer[id].sqldbname), "%s/%s_routes.db.sqlite3",
-		DUMPDIR,
+		g_DUMPDIR,
 		peer[id].af == 4 ? p_tools_ip4str(id, &peer[id].ip4) : p_tools_ip6str(id, &peer[id].ip6));
 
-	#ifdef DEBUG
-	printf("opening '%s'\n",peer[id].sqldbname);
-	#endif
+	if (g_DEBUG) {
+		printf("opening '%s'\n",peer[id].sqldbname);
+	}
 
 	struct stat sb;
-	if ( stat(DUMPDIR, &sb) == -1 )
+	if ( stat(g_DUMPDIR, &sb) == -1 )
 	{
-		mkdir(DUMPDIR, 0755);
+		mkdir(g_DUMPDIR, 0755);
 	}
 
 
@@ -170,6 +175,42 @@ void p_sqldump_open_file(struct peer_t *peer, int id, struct timeval *ts)
 	sqlite3_close(pSQL3);
 
 	log_info( LOGFD ,  "Created required tables" );
+
+
+	/* create a soft link if required - sometimes the */
+	/* netflow IP is different from the BGP peer IP */
+	if ( peer[id].af_netflow==4) {
+
+		char symlinkname[512];
+
+		snprintf(symlinkname, sizeof(symlinkname), "%s/%s_routes.db.sqlite3",
+					g_DUMPDIR,
+					p_tools_ip4str(id, &peer[id].ip4_netflow));
+
+		int ret=symlink( peer[id].sqldbname, symlinkname);
+		if (ret<0) {
+			log_error( LOGFD ,  "Unable to create symbolic link %s f=%s ", strerror(errno), symlinkname );
+			if (g_DEBUG) {
+				printf("error creating symlink %s f=%s\n", strerror(errno), symlinkname);
+			}
+		}
+	
+	} else if ( peer[id].af_netflow==6) {
+		char symlinkname[512];
+
+		snprintf(symlinkname, sizeof(symlinkname), "%s/%s_routes.db.sqlite3",
+					g_DUMPDIR,
+					p_tools_ip6str(id, &peer[id].ip6_netflow));
+
+		int ret=symlink( peer[id].sqldbname, symlinkname);
+		if (ret<0) {
+			log_error( LOGFD ,  "Unable to create symbolic link %s f=%s ", strerror(errno), symlinkname );
+			if (g_DEBUG) {
+				printf("error creating symlink %s f=%s\n", strerror(errno), symlinkname);
+			}
+		}
+	
+	}
 }
 
 /* log keepalive msg */

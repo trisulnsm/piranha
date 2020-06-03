@@ -30,7 +30,6 @@ void  p_main_sighup(int sig);
 int   mydaemon(int nochdir, int noclose);
 int   mychown(char *path, uid_t uid, gid_t gid, int depth);
 
-#ifdef DEBUG
 const static char *bgp_origin[256] = { "IGP", "EGP", "UNKNOWN" };
 
 const static char *bgp_path_attribute[256] = {
@@ -543,4 +542,3 @@ const static char *bgp_capability[256] = {
 	"Reserved (Private use)",
 };
 
-#endif

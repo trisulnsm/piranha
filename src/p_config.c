@@ -31,6 +31,24 @@
 #include <p_config.h>
 #include <p_tools.h>
 
+
+extern char * g_PIDFILE;
+extern char * g_DUMPDIR;
+extern char * g_PEERLOGDIR;
+extern char * g_LOGFILE;
+extern char * g_STATUSFILE;
+extern char * g_STATUSTEMP;
+extern int    g_DEBUG;
+
+/*
+#define PEERLOGDIR PATH "/var/log/trisul-probe"
+#define LOGFILE    PATH "/var/log/trisul-probe/piranha.log"
+#define STATUSFILE PATH "/var/log/trisul-probe/piranha.status"
+#define STATUSTEMP PATH "/var/log/trisul-probe/piranha.status.temp"
+#define PIDFILE    PATH "/var/run/trisul/piranha.pid"
+#define DUMPDIR    PATH "/var/ramdisk"
+*/
+
 /* reading configuration file */
 
 int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
@@ -68,9 +86,9 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 			if ( s != NULL && strlen(s) > 0 && strlen(s) <= 16 )
 			{
 				config->routerid = ntohl(inet_addr(s));
-				#ifdef DEBUG
-				printf("DEBUG: config bgp_router_id %s",s);
-				#endif
+				if (g_DEBUG) {
+					printf("DEBUG: config bgp_router_id %s",s);
+				}
 			}
 		}
 		else if ( !strcmp(s,"user"))
@@ -91,9 +109,9 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 					config->uid = mypwd->pw_uid;
 					config->gid = mypwd->pw_gid;
 				}
-				#ifdef DEBUG
-				printf("DEBUG: config user %i/%i (uid/gid) %s\n",config->uid,config->gid,s);
-				#endif
+				if (g_DEBUG) {
+					printf("DEBUG: config user %i/%i (uid/gid) %s\n",config->uid,config->gid,s);
+				}
 			}
 		}
 		else if ( !strcmp(s,"local_as"))
@@ -102,9 +120,9 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 			if ( s != NULL && strlen(s) > 0 && strlen(s) <= 6 )
 			{
 				config->as = atol(s);
-				#ifdef DEBUG
-				printf("DEBUG: config local_as %s",s);
-				#endif
+				if (g_DEBUG) {
+					printf("DEBUG: config local_as %s",s);
+				}
 			}
 		}
 		else if ( !strcmp(s,"local_port4"))
@@ -114,9 +132,9 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 			{
 				config->ip4.listen.sin_family = AF_INET;
 				config->ip4.listen.sin_port = htons(atoi(s));
-				#ifdef DEBUG
-				printf("DEBUG: config local_port4 %s",s);
-				#endif
+				if (g_DEBUG) {
+					printf("DEBUG: config local_port4 %s",s);
+				}
 			}
 		}
 		else if ( !strcmp(s,"local_port6"))
@@ -126,9 +144,9 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 			{
 				config->ip6.listen.sin6_family = AF_INET6;
 				config->ip6.listen.sin6_port = htons(atoi(s));
-				#ifdef DEBUG
-				printf("DEBUG: config local_port6 %s",s);
-				#endif
+				if (g_DEBUG) {
+					printf("DEBUG: config local_port6 %s",s);
+				}
 			}
 		}
 		else if ( !strcmp(s, "local_ip4"))
@@ -140,11 +158,62 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 				if ( inet_pton(AF_INET, s, &config->ip4.listen.sin_addr) == 1 )
 				{
 					config->ip4.enabled=1;
-					#ifdef DEBUG
-					printf("DEBUG: config local_ipv4 %s\n", s);
-					#endif
+					if (g_DEBUG) {
+						printf("DEBUG: config local_ipv4 %s\n", s);
+					}
 				}
 			}
+		}
+		else if ( !strcmp(s, "debug"))
+		{
+			s = strtok(NULL, " ");
+			CHOMP(s);
+			if (strcmp(s,"on")==0) {
+				g_DEBUG=1;
+			} 
+			printf("DEBUG: config debug_mode=%d\n",  g_DEBUG);
+		}
+		else if ( !strcmp(s, "log_dir"))
+		{
+			s = strtok(NULL, " ");
+			CHOMP(s);
+			g_PEERLOGDIR = strdup(s);
+			printf("DEBUG: config log_dir %s\n", g_PEERLOGDIR); 
+		}
+		else if ( !strcmp(s, "pid_file"))
+		{
+			s = strtok(NULL, " ");
+			CHOMP(s);
+			g_PIDFILE = strdup(s);
+			printf("DEBUG: config pid_file %s\n", g_PIDFILE);
+		}
+		else if ( !strcmp(s, "log_file"))
+		{
+			s = strtok(NULL, " ");
+			CHOMP(s);
+			g_LOGFILE = strdup(s);
+			printf("DEBUG: config log_file %s\n", g_LOGFILE);
+		}
+		else if ( !strcmp(s, "db_dir"))
+		{
+			s = strtok(NULL, " ");
+			CHOMP(s);
+			g_DUMPDIR = strdup(s);
+			printf("DEBUG: config db_dir %s\n", g_DUMPDIR);
+		}
+		else if ( !strcmp(s, "status_file"))
+		{
+			s = strtok(NULL, " ");
+			CHOMP(s);
+			g_STATUSFILE = strdup(s);
+			printf("DEBUG: config status_file %s\n", g_STATUSFILE);
+		}
+		else if ( !strcmp(s, "status_temp"))
+		{
+			s = strtok(NULL, " ");
+			CHOMP(s);
+			g_STATUSTEMP = strdup(s);
+			printf("DEBUG: config status_temp %s\n", g_STATUSTEMP);
 		}
 		else if ( !strcmp(s, "local_ip6"))
 		{
@@ -155,9 +224,9 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 				if ( inet_pton(AF_INET6, s, &config->ip6.listen.sin6_addr) == 1 )
 				{
 					config->ip6.enabled=1;
-					#ifdef DEBUG
-					printf("DEBUG: config local_ipv6 %s\n", s);
-					#endif
+					if (g_DEBUG) {
+						printf("DEBUG: config local_ipv6 %s\n", s);
+					}
 				}
 			}
 		}
@@ -167,9 +236,9 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 			if ( s != NULL && strlen(s) > 0 && strlen(s) <= 4 )
 			{
 				config->holdtime = atoi(s);
-				#ifdef DEBUG
-				printf("DEBUG: config bgp_holdtime %s",s);
-				#endif
+				if (g_DEBUG) {
+					printf("DEBUG: config bgp_holdtime %s",s);
+				}
 			}
 		}
 		else if ( !strcmp(s, "export"))
@@ -178,9 +247,9 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 			CHOMP(s);
 			if ( s != NULL && strlen(s) > 0 && strlen(s) < 100 )
 			{
-				#ifdef DEBUG
-				printf("DEBUG: config export %s\n", s);
-				#endif
+				if (g_DEBUG){
+					printf("DEBUG: config export %s\n", s);
+				}
 
 				if ( ! strcmp(s, "origin") )
 					config->export |= EXPORT_ORIGIN;
@@ -194,10 +263,8 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 					config->export |= EXPORT_LARGECOMMUNITY;
 				else if ( ! strcmp(s, "nexthop") )
 					config->export |= EXPORT_NEXT_HOP;
-				#ifdef DEBUG
-				else
+				else if (g_DEBUG) 
 					printf("DEBUG: Unknown export %s\n", s);
-				#endif
 			}
 		}
 		else if ( !strcmp(s,"neighbor"))
@@ -212,24 +279,22 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 				if ( inet_pton(AF_INET6, s, &peer_ip6) == 1 )
 				{
 					af=6;
-					#ifdef DEBUG
-					printf("DEBUG: config neighbor IP6 %s ",
-						p_tools_ip6str(MAX_PEERS, &peer_ip6));
-					#endif
+					if (g_DEBUG) {
+						printf("DEBUG: config neighbor IP6 %s ", p_tools_ip6str(MAX_PEERS, &peer_ip6));
+					}
 				}
 				else if ( inet_pton(AF_INET, s, &peer_ip4) == 1 )
 				{
 					af=4;
-					#ifdef DEBUG
-					printf("DEBUG: config neighbor IP4 %s ",
-						p_tools_ip4str(MAX_PEERS, &peer_ip4));
-					#endif
+					if (g_DEBUG) {
+						printf("DEBUG: config neighbor IP4 %s ", p_tools_ip4str(MAX_PEERS, &peer_ip4));
+					}
 				}
 				else
 				{
-					#ifdef DEBUG
-					printf("DEBUG: config neighbor, invalid IP '%s'\n",s);
-					#endif
+					if (g_DEBUG) {
+						printf("DEBUG: config neighbor, invalid IP '%s'\n",s);
+					}
 				}
 			
 				s = strtok(NULL, " ");
@@ -238,9 +303,9 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 					uint32_t peer_as = strtol(s, NULL, 10);
 					char peer_key[MAX_KEY_LEN];
 					CHOMP(s);
-					#ifdef DEBUG
-					printf("as %s",s);
-					#endif
+					if (g_DEBUG) {
+						printf("as %s",s);
+					}
 
 					s = strtok(NULL," ");
 					if ( s != NULL && strlen(s) > 0 && strlen(s) < MAX_KEY_LEN )
@@ -256,9 +321,9 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 						if ( len > 0 )
 						{
 							strcpy(peer_key, s);
-							#ifdef DEBUG
-							printf(" key %s",s);
-							#endif
+							if (g_DEBUG) {
+								printf(" key %s",s);
+							}
 						}
 					}
 					else
@@ -268,9 +333,53 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 						p_config_add_peer(peer, af, &peer_ip4, &peer_ip6, peer_as, peer_key, mytime);
 
 				}
-				#ifdef DEBUG
-				printf("\n");
-				#endif
+				if (g_DEBUG) {
+					printf("\n");
+				}
+			}
+		}
+		else if ( !strcmp(s,"netflow"))
+		{
+			char  bgp_peer_ip[128];
+			char  netflow_ip[128];
+
+			/* peer_ip   netflow_ip pair*/
+			s = strtok(NULL, " ");
+			if ( s != NULL )
+			{
+				strcpy( bgp_peer_ip, s);
+				s = strtok(NULL, " ");
+				if ( s != NULL ) {
+					CHOMP(s);
+					strcpy( netflow_ip, s);
+				}
+			}
+
+			/* search for a matching peer_ip */
+			for(int a=0; a<MAX_PEERS; a++)
+			{
+				if (strcmp( bgp_peer_ip, p_tools_ip4str(MAX_PEERS, &peer[a].ip4))==0 ||
+					strcmp( bgp_peer_ip, p_tools_ip6str(MAX_PEERS, &peer[a].ip6))==0)
+				{
+					if (strchr(netflow_ip,'.')) {
+						inet_pton(AF_INET, netflow_ip, &peer[a].ip4_netflow);
+						peer[a].af_netflow=4;
+
+						if (g_DEBUG) {
+							printf("DEBUG: config netflow peer %s alias %s\n",
+				                         p_tools_ip4str(MAX_PEERS, &peer[a].ip4),
+										 netflow_ip);
+						}
+					} else if (strchr(netflow_ip,':')==0){
+						inet_pton(AF_INET6, netflow_ip, &peer[a].ip6_netflow);
+						peer[a].af_netflow=6;
+						if (g_DEBUG) {
+							printf("DEBUG: config netflow peer %s alias %s\n",
+				                         p_tools_ip6str(MAX_PEERS, &peer[a].ip6),
+										 netflow_ip);
+						}
+					}
+				}
 			}
 		}
 	}

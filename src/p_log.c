@@ -31,6 +31,8 @@
 #include <p_log.h>
 #include <p_tools.h>
 
+extern char * g_PIDFILE;
+
 /* update pid file */
 void p_log_pid()
 {
@@ -38,7 +40,7 @@ void p_log_pid()
 	char pidstr[10];
 	pid_t pid = getpid();
 
-	if ( ( fh = fopen(PIDFILE,"w") ) == NULL ) { return; }
+	if ( ( fh = fopen(g_PIDFILE,"w") ) == NULL ) { return; }
 
 	snprintf(pidstr, sizeof(pidstr), "%i\n",pid);
 

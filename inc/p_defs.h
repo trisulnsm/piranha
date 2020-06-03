@@ -390,6 +390,7 @@ struct config_t
 	gid_t    gid;
 	char     *file;
 	struct peer_t *peer;
+
 };
 
 struct peer_t
@@ -421,8 +422,17 @@ struct peer_t
 	int      ilen;
 	int      olen;
 	int      sock;
+
+	/* Added trisul_ */
 	char     sqldbname[1024];  /* sql database name */
 	FILE    *logfd;            /* for logging, we need this */
+
+	/* Added trisul_ */
+	uint8_t  af_netflow;               /* indicates wether netflow source ip is v4 or v6 */
+	union {
+		struct   in6_addr ip6_netflow;     /* netflow IP */
+		struct   in_addr  ip4_netflow;     
+	};
 };
 
 #endif
