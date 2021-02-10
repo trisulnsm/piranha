@@ -77,8 +77,18 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 	while(fgets(line, sizeof(line), fd))
 	{
 		char *s = line;
-		if ( strncmp(s, "#", 1) == 0 ) { continue; }
+		if ( strncmp(s, "#", 1) == 0 ) { 
+			continue; 
+		}
+
+		char *newline = strchr( s, '\n' ); 
+		if ( newline ) *newline = 0;
+
 		s = strtok(s, " ");
+
+		if (s==NULL) {
+			continue; 
+		}
 
 		if ( !strcmp(s,"bgp_router_id"))
 		{
@@ -87,7 +97,7 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 			{
 				config->routerid = ntohl(inet_addr(s));
 				if (g_DEBUG) {
-					printf("DEBUG: config bgp_router_id %s",s);
+					printf("DEBUG: config bgp_router_id %s\n",s);
 				}
 			}
 		}
@@ -121,7 +131,7 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 			{
 				config->as = atol(s);
 				if (g_DEBUG) {
-					printf("DEBUG: config local_as %s",s);
+					printf("DEBUG: config local_as %s\n",s);
 				}
 			}
 		}
@@ -133,7 +143,7 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 				config->ip4.listen.sin_family = AF_INET;
 				config->ip4.listen.sin_port = htons(atoi(s));
 				if (g_DEBUG) {
-					printf("DEBUG: config local_port4 %s",s);
+					printf("DEBUG: config local_port4 %s\n",s);
 				}
 			}
 		}
@@ -145,7 +155,7 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 				config->ip6.listen.sin6_family = AF_INET6;
 				config->ip6.listen.sin6_port = htons(atoi(s));
 				if (g_DEBUG) {
-					printf("DEBUG: config local_port6 %s",s);
+					printf("DEBUG: config local_port6 %s\n",s);
 				}
 			}
 		}
@@ -237,7 +247,7 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 			{
 				config->holdtime = atoi(s);
 				if (g_DEBUG) {
-					printf("DEBUG: config bgp_holdtime %s",s);
+					printf("DEBUG: config bgp_holdtime %s\n",s);
 				}
 			}
 		}
@@ -280,14 +290,14 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 				{
 					af=6;
 					if (g_DEBUG) {
-						printf("DEBUG: config neighbor IP6 %s ", p_tools_ip6str(MAX_PEERS, &peer_ip6));
+						printf("DEBUG: config neighbor IP6 %s \n", p_tools_ip6str(MAX_PEERS, &peer_ip6));
 					}
 				}
 				else if ( inet_pton(AF_INET, s, &peer_ip4) == 1 )
 				{
 					af=4;
 					if (g_DEBUG) {
-						printf("DEBUG: config neighbor IP4 %s ", p_tools_ip4str(MAX_PEERS, &peer_ip4));
+						printf("DEBUG: config neighbor IP4 %s \n", p_tools_ip4str(MAX_PEERS, &peer_ip4));
 					}
 				}
 				else
@@ -356,7 +366,8 @@ int p_config_load(struct config_t *config, struct peer_t *peer, uint32_t mytime)
 			}
 
 			/* search for a matching peer_ip */
-			for(int a=0; a<MAX_PEERS; a++)
+			int a=0;
+			for(a=0; a<MAX_PEERS; a++)
 			{
 				if (strcmp( bgp_peer_ip, p_tools_ip4str(MAX_PEERS, &peer[a].ip4))==0 ||
 					strcmp( bgp_peer_ip, p_tools_ip6str(MAX_PEERS, &peer[a].ip6))==0)
